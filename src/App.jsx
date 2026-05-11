@@ -3,9 +3,8 @@ import { supabase } from './supabase'
 
 const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const shiftTimes = [
-  { label: 'Mittag', start_time: '11:00', end_time: '15:00', people: 3 },
-  { label: 'Abend 1', start_time: '17:00', end_time: '20:00', people: 4 },
-  { label: 'Abend 2', start_time: '20:00', end_time: '22:30', people: 4 },
+  { label: 'Frueh-Abend', start_time: '17:00', end_time: '19:30', people: 4 },
+  { label: 'Spaet-Abend', start_time: '19:30', end_time: '22:00', people: 4 },
 ]
 const roleOptions = ['Gesch\u00e4ftsf\u00fchrer', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
@@ -697,7 +696,7 @@ export default function ChinaTownDienstplan() {
           {loading ? (
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-gray-300">Lade Dienstplan...</div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-7">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {calendarDays.map((day) => (
                 <article key={day.day} className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl shadow-black/10">
                   <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
