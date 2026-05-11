@@ -218,20 +218,22 @@ export default function ChinaTownDienstplan() {
                       <span className="text-yellow-400 font-medium">
                         {employee.shift}
                       </span>
+                        <button
+                          onClick={async () => {
+                            await supabase
+                              .from('shifts')
+                              .update({
+                                open: false,
+                                employee_name: '08-jessy-hart-vorlauf',
+                              })
+                              .eq('id', shift.id)
 
-                      <button
-                        onClick={async () => {
-                          await supabase
-                            .from('shifts')
-                            .update({ open: true })
-                            .eq('employee_name', employee.name)
-
-                          location.reload()
-                        }}
-                        className="bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1 rounded-xl text-xs transition"
-                      >
-                        Abmelden
-                      </button>
+                            location.reload()
+                          }}
+                          className="bg-yellow-400 text-black px-5 py-3 rounded-2xl font-bold hover:scale-105 transition"
+                        >
+                          Übernehmen
+                        </button>
                     </div>
                   </div>
                 ))}
