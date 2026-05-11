@@ -50,12 +50,13 @@ export default function ChinaTownDienstplan() {
     grouped[shift.day] = []
   }
 
+  if (shift.open !== true) {
   grouped[shift.day].push({
     name: shift.employee_name,
     shift: `${shift.start_time} - ${shift.end_time}`,
     type: 'Schicht',
   })
-})
+  }
 
       const formatted = Object.keys(grouped).map((day) => ({
         day,
@@ -219,21 +220,18 @@ export default function ChinaTownDienstplan() {
                         {employee.shift}
                       </span>
                         <button
-                          onClick={async () => {
-                            await supabase
-                              .from('shifts')
-                              .update({
-                                open: false,
-                                employee_name: '08-jessy-hart-vorlauf',
-                              })
-                              .eq('id', shift.id)
+                        onClick={async () => {
+                          await supabase
+                            .from('shifts')
+                            .update({ open: true })
+                            .eq('employee_name', employee.name)
 
-                            location.reload()
-                          }}
-                          className="bg-yellow-400 text-black px-5 py-3 rounded-2xl font-bold hover:scale-105 transition"
-                        >
-                          Übernehmen
-                        </button>
+                          location.reload()
+                        }}
+                        className="bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1 rounded-xl text-xs transition"
+                      >
+                        Abmelden
+                      </button>
                     </div>
                   </div>
                 ))}
