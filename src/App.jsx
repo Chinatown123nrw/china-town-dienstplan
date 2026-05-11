@@ -24,6 +24,7 @@ export default function ChinaTownDienstplan() {
   ];
 
   const [shifts, setShifts] = useState([])
+  const [openShifts, setOpenShifts] = useState([])
   useEffect(() => {
   const getShifts = async () => {
     const { data, error } = await supabase
@@ -34,16 +35,27 @@ export default function ChinaTownDienstplan() {
       const grouped = {}
 
       data.forEach((shift) => {
-        if (!grouped[shift.day]) {
-          grouped[shift.day] = []
-        }
+  if (shift.open === true) {
+    setOpenShifts((prev) => [
+      ...prev,
+      {
+        id: shift.id,
+        day: shift.day,
+        shift: `${shift.start_time} - ${shift.end_time}`,
+      },
+    ])
+  }
 
-        grouped[shift.day].push({
-          name: shift.employee_name,
-          shift: `${shift.start_time} - ${shift.end_time}`,
-          type: 'Schicht',
-        })
-      })
+  if (!grouped[shift.day]) {
+    grouped[shift.day] = []
+  }
+
+  grouped[shift.day].push({
+    name: shift.employee_name,
+    shift: `${shift.start_time} - ${shift.end_time}`,
+    type: 'Schicht',
+  })
+})
 
       const formatted = Object.keys(grouped).map((day) => ({
         day,
@@ -229,35 +241,45 @@ export default function ChinaTownDienstplan() {
         </div>
 
         <div className="mt-16 bg-white/5 border border-yellow-400/20 rounded-3xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-3xl font-bold text-yellow-400">
-                Offene Schichten
-              </h2>
-              <p className="text-gray-400 mt-2">
-                Abgemeldete Schichten können übernommen werden.
-              </p>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-3xl font-bold text-yellow-400">
+                  Offene Schichten
+                </h2>
+
+                <p className="text-gray-400 mt-2">
+                  Freigegebene Schichten
+                </p>
+              </div>
             </div>
 
-            <span className="bg-red-500/20 text-red-300 px-4 py-2 rounded-xl text-sm">
-              Offen
-            </span>
-          </div>
+            <div className="space-y-4">
+              {openShifts.map((shift, index) => (
+                <div
+                  key={index}
+                  className="bg-black/30 rounded-2xl p-4 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-semibold">
+                      {shift.day}
+                    </p>
 
-          <div className="bg-black/30 rounded-2xl p-4 flex items-center justify-between">
-            <div>
-              <p className="font-semibold">Mittwoch 20:00 - 21:00</p>
-              <p className="text-gray-400 text-sm">
-                Schicht wurde freigegeben
-              </p>
+                    <p className="text-gray-400 text-sm">
+                      {shift.shift}
+                    </p>
+                  </div>
+
+                  <button
+                    className="bg-yellow-400 text-black px-5 py-3 rounded-2xl font-bold hover:scale-105 transition"
+                  >
+                    Übernehmen
+                  </button>
+                </div>
+              ))}
             </div>
-
-            <button className="bg-yellow-400 text-black px-5 py-3 rounded-2xl font-bold hover:scale-105 transition">
-              Übernehmen
-            </button>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
