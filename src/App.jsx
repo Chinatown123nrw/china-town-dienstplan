@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { supabase } from './supabase'
 export default function ChinaTownDienstplan() {
   const blacklist = [
     ['11-gokay-sahin', '15-melik-hak'],
@@ -21,28 +23,39 @@ export default function ChinaTownDienstplan() {
     { name: '15-melik-hak', role: 'Service' },
   ];
 
-  const shifts = [
-    {
-      day: 'Montag',
-      employees: [
-        { name: '01-santiago-oconner', shift: '16:00 - 17:30', type: '1 1/2 Stunden' },
-        { name: '03-amelie-bloom', shift: '17:30 - 18:30', type: '1 Stunde' },
-        { name: '04-miguel-monroe', shift: '18:30 - 20:00', type: '1 1/2 Stunden' },
-        { name: '06-bella-dark', shift: '20:00 - 21:00', type: '1 Stunde' },
-        { name: '07-jason-brocks', shift: '21:00 - 22:00', type: '1 Stunde' },
-      ],
-    },
-    {
-      day: 'Dienstag',
-      employees: [
-        { name: '02-david-lox', shift: '16:00 - 17:30', type: '1 1/2 Stunden' },
-        { name: '08-jessy-hart-vorlauf', shift: '17:30 - 18:30', type: '1 Stunde' },
-        { name: '09-fabio-caruso', shift: '18:30 - 20:00', type: '1 1/2 Stunden' },
-        { name: '10-cardi-oconner', shift: '20:00 - 21:00', type: '1 Stunde' },
-        { name: '13-chris-martens', shift: '21:00 - 22:00', type: '1 Stunde' },
-      ],
-    },
-  ];
+  const [shifts, setShifts] = useState([])
+  useEffect(() => {
+  const getShifts = async () => {
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('*')
+
+    if (!error) {
+      const grouped = {}
+
+      data.forEach((shift) => {
+        if (!grouped[shift.day]) {
+          grouped[shift.day] = []
+        }
+
+        grouped[shift.day].push({
+          name: shift.employee_name,
+          shift: `${shift.start_time} - ${shift.end_time}`,
+          type: 'Schicht',
+        })
+      })
+
+      const formatted = Object.keys(grouped).map((day) => ({
+        day,
+        employees: grouped[day],
+      }))
+
+      setShifts(formatted)
+    }
+  }
+
+  getShifts()
+}, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-black text-white p-8">
