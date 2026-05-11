@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 export default function ChinaTownDienstplan() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-
+  const [isAdmin, setIsAdmin] = useState(false)
   const handleLogin = async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -14,7 +14,13 @@ export default function ChinaTownDienstplan() {
     if (error) {
       alert('Login fehlgeschlagen')
     } else {
-      alert('Erfolgreich eingeloggt')
+      if (email === 'admin@chinatown.de') {
+        setIsAdmin(true)
+        alert('Admin Login erfolgreich')
+      } else {
+        alert('Mitarbeiter Login erfolgreich')
+      }
+
       console.log(data)
     }
   }
@@ -65,6 +71,33 @@ export default function ChinaTownDienstplan() {
               </button>
 
             </div>
+            {isAdmin && (
+  <div className="mt-10 bg-yellow-400/10 border border-yellow-400 rounded-3xl p-6">
+    <h2 className="text-3xl font-bold text-yellow-400 mb-4">
+      Admin Bereich
+    </h2>
+
+    <div className="grid md:grid-cols-2 gap-4">
+
+      <button className="bg-yellow-400 text-black py-4 rounded-2xl font-bold">
+        Dienstplan bearbeiten
+      </button>
+
+      <button className="bg-red-500 text-white py-4 rounded-2xl font-bold">
+        Mitarbeiter verwalten
+      </button>
+
+      <button className="bg-green-500 text-black py-4 rounded-2xl font-bold">
+        Schichten freigeben
+      </button>
+
+      <button className="bg-blue-500 text-white py-4 rounded-2xl font-bold">
+        Wochenplan generieren
+      </button>
+
+    </div>
+  </div>
+)}
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
