@@ -13,16 +13,24 @@ export default function ChinaTownDienstplan() {
 
     if (error) {
       alert('Login fehlgeschlagen')
-    } else {
-      if (email === 'admin@chinatown.de') {
-        setIsAdmin(true)
-        alert('Admin Login erfolgreich')
-      } else {
-        alert('Mitarbeiter Login erfolgreich')
-      }
-
-      console.log(data)
+      return
     }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', email)
+      .single()
+
+    if (profile?.role === 'admin') {
+      setIsAdmin(true)
+      alert('Admin Login erfolgreich')
+    } else {
+      setIsAdmin(false)
+      alert('Mitarbeiter Login erfolgreich')
+    }
+
+    console.log(profile)
   }
 
   const blacklist = [
