@@ -25,6 +25,9 @@ export default function ChinaTownDienstplan() {
 
   const [shifts, setShifts] = useState([])
   const [openShifts, setOpenShifts] = useState([])
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [user, setUser] = useState(null)
   useEffect(() => {
   const getShifts = async () => {
     const { data, error } = await supabase
@@ -68,6 +71,15 @@ export default function ChinaTownDienstplan() {
   }
 
   getShifts()
+  const getUser = async () => {
+  const { data } = await supabase.auth.getUser()
+
+    if (data.user) {
+      setUser(data.user)
+    }
+  }
+
+  getUser()
 }, [])
 
   return (
@@ -81,18 +93,33 @@ export default function ChinaTownDienstplan() {
 
             <div className="space-y-4">
               <input
-                type="text"
-                placeholder="Admin Benutzername"
-                className="w-full bg-black/30 border border-white/10 rounded-2xl px-5 py-4 outline-none focus:border-yellow-400"
+                type="email"
+                placeholder="Admin E-Mail"
+                onChange={(e) => setEmail(e.target.value)}
               />
 
-              <input
+              <input   
                 type="password"
                 placeholder="Passwort"
-                className="w-full bg-black/30 border border-white/10 rounded-2xl px-5 py-4 outline-none focus:border-yellow-400"
+                onChange={(e) => setPassword(e.target.value)}
               />
 
-              <button className="w-full bg-yellow-400 text-black py-4 rounded-2xl font-bold hover:scale-[1.01] transition">
+              <button
+                onClick={async () => {
+                  const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                  })
+
+                  if (error) {
+                    alert('Login fehlgeschlagen')
+                  } else {
+                    setUser(data.user)
+                    alert('Login erfolgreich')
+                  }
+                }}
+                className="w-full bg-yellow-400 text-black py-4 rounded-2xl font-bold hover:scale-[1.01] transition"
+              >
                 Als Admin anmelden
               </button>
             </div>
@@ -116,7 +143,22 @@ export default function ChinaTownDienstplan() {
                 className="w-full bg-black/30 border border-white/10 rounded-2xl px-5 py-4 outline-none focus:border-yellow-400"
               />
 
-              <button className="w-full bg-green-500 text-black py-4 rounded-2xl font-bold hover:scale-[1.01] transition">
+              <button
+                onClick={async () => {
+                  const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                  })
+
+                  if (error) {
+                    alert('Login fehlgeschlagen')
+                  } else {
+                    setUser(data.user)
+                    alert('Login erfolgreich')
+                  }
+                }}
+                className="w-full bg-green-500 text-black py-4 rounded-2xl font-bold hover:scale-[1.01] transition"
+              >
                 Als Mitarbeiter anmelden
               </button>
             </div>
