@@ -29,6 +29,7 @@ const emptyEmployeeForm = {
   slug: '',
   role: 'Service',
   is_admin: false,
+  temp_password: '',
 }
 const loginAliases = {
   chinaadmin: 'admin@chinatown.de',
@@ -48,6 +49,21 @@ function normalizeSlug(value) {
     .toLowerCase()
     .replaceAll(' ', '-')
     .replace(/[^a-z0-9-]/g, '')
+}
+
+function employeeEmailFromName(name) {
+  const handle = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+
+  return handle ? `${handle}@chinatown.de` : ''
+}
+
+function generateTempPassword() {
+  return String(Math.floor(10000 + Math.random() * 90000))
 }
 
 function roleBadgeClass(role) {
@@ -105,7 +121,10 @@ export default function ChinaTownDienstplan() {
   const [newPassword, setNewPassword] = useState('')
   const [employees, setEmployees] = useState([])
   const [rows, setRows] = useState([])
-  const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm)
+  const [employeeForm, setEmployeeForm] = useState(() => ({
+    ...emptyEmployeeForm,
+    temp_password: generateTempPassword(),
+  }))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -116,6 +135,7 @@ export default function ChinaTownDienstplan() {
     () => new Map(employees.map((employee) => [employee.slug, employee])),
     [employees],
   )
+  const employeeFormEmail = useMemo(() => employeeEmailFromName(employeeForm.name), [employeeForm.name])
 
   const openShifts = useMemo(
     () =>
@@ -296,7 +316,10 @@ export default function ChinaTownDienstplan() {
   }
 
   function resetEmployeeForm() {
-    setEmployeeForm(emptyEmployeeForm)
+    setEmployeeForm({
+      ...emptyEmployeeForm,
+      temp_password: generateTempPassword(),
+    })
   }
 
   function editEmployee(employee) {
@@ -307,6 +330,7 @@ export default function ChinaTownDienstplan() {
       slug: employee.slug,
       role: employee.role,
       is_admin: employee.is_admin,
+      temp_password: generateTempPassword(),
     })
   }
 
@@ -326,14 +350,14 @@ export default function ChinaTownDienstplan() {
       return
     }
 
-    const payload = {
-      auth_user_id: employeeForm.auth_user_id.trim() || null,
+    const basePayload = {
       name: employeeForm.name.trim(),
       slug: normalizeSlug(employeeForm.slug),
       role: employeeForm.role,
       is_admin: employeeForm.is_admin,
       active: true,
     }
+    const payload = employeeForm.id ? basePayload : { ...basePayload, auth_user_id: null }
 
     if (!payload.name || !payload.slug || !payload.role) {
       setMessage('Name, Slug und Rolle sind Pflichtfelder.')
@@ -353,8 +377,54 @@ export default function ChinaTownDienstplan() {
       setMessage(`Mitarbeiter konnte nicht gespeichert werden: ${error.message}`)
     } else {
       await loadEmployees()
+      const loginInfo = employeeForm.id
+        ? ''
+        : ` Login vorbereiten: ${employeeEmailFromName(payload.name)} / Erstpasswort ${employeeForm.temp_password}.`
       resetEmployeeForm()
-      setMessage('Mitarbeiter wurde gespeichert.')
+      setMessage(`Mitarbeiter wurde gespeichert.${loginInfo}`)
+    }
+
+    setSaving(false)
+  }
+
+  async function deleteEmployee(employee) {
+    if (!requireAdmin()) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `${employee.name} wirklich loeschen? Vorhandene Schichten werden automatisch als offen markiert.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error: shiftError } = await supabase
+      .from('shifts')
+      .update({ open: true, employee_name: null })
+      .eq('employee_name', employee.slug)
+
+    if (shiftError) {
+      setMessage(`Schichten konnten nicht freigegeben werden: ${shiftError.message}`)
+      setSaving(false)
+      return
+    }
+
+    const { error } = await supabase.from('employees').delete().eq('id', employee.id)
+
+    if (error) {
+      setMessage(`Mitarbeiter konnte nicht geloescht werden: ${error.message}`)
+    } else {
+      await loadEmployees()
+      await loadShifts()
+      if (employeeForm.id === employee.id) {
+        resetEmployeeForm()
+      }
+      setMessage('Mitarbeiter wurde geloescht. Seine Schichten sind jetzt offen.')
     }
 
     setSaving(false)
@@ -782,7 +852,7 @@ export default function ChinaTownDienstplan() {
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-yellow-400">Mitarbeiterverwaltung</h2>
-                <p className="text-sm text-gray-400">Mitarbeiter, Rollen, Adminrechte und Auth-User-Zuordnung.</p>
+                <p className="text-sm text-gray-400">Mitarbeiter, Rollen, Adminrechte und vorbereitete China-Town-Logins.</p>
               </div>
               {employeeForm.id && (
                 <button
@@ -794,7 +864,7 @@ export default function ChinaTownDienstplan() {
               )}
             </div>
 
-            <form onSubmit={saveEmployee} className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
+            <form onSubmit={saveEmployee} className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
               <input
                 className={compactInputClass}
                 placeholder="Name"
@@ -824,12 +894,6 @@ export default function ChinaTownDienstplan() {
                   </option>
                 ))}
               </select>
-              <input
-                className={compactInputClass}
-                placeholder="Auth User ID"
-                value={employeeForm.auth_user_id}
-                onChange={(event) => setEmployeeForm((form) => ({ ...form, auth_user_id: event.target.value }))}
-              />
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm text-gray-200">
                   <input
@@ -849,6 +913,31 @@ export default function ChinaTownDienstplan() {
               </div>
             </form>
 
+            <div className="mb-5 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl bg-black/30 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Login E-Mail</p>
+                <p className="mt-2 font-semibold text-yellow-100">{employeeFormEmail || 'Name eingeben'}</p>
+              </div>
+              <div className="rounded-2xl bg-black/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Erstpasswort</p>
+                    <p className="mt-2 font-mono text-2xl font-bold text-green-200">{employeeForm.temp_password}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmployeeForm((form) => ({ ...form, temp_password: generateTempPassword() }))}
+                    className="rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-gray-200 transition hover:bg-white/10"
+                  >
+                    Neu
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  Auth-User in Supabase mit dieser E-Mail und diesem Passwort anlegen, danach User-ID mit Mitarbeiter verbinden.
+                </p>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-left text-sm">
                 <thead className="text-xs uppercase tracking-[0.14em] text-gray-400">
@@ -856,7 +945,7 @@ export default function ChinaTownDienstplan() {
                     <th className="px-3 py-2">Name</th>
                     <th className="px-3 py-2">Slug</th>
                     <th className="px-3 py-2">Rolle</th>
-                    <th className="px-3 py-2">Auth User</th>
+                    <th className="px-3 py-2">Login</th>
                     <th className="px-3 py-2">Rechte</th>
                     <th className="px-3 py-2 text-right">Aktion</th>
                   </tr>
@@ -868,7 +957,8 @@ export default function ChinaTownDienstplan() {
                       <td className="px-3 py-3 text-gray-300">{employee.slug}</td>
                       <td className="px-3 py-3 text-gray-300">{employee.role}</td>
                       <td className="max-w-[220px] truncate px-3 py-3 text-gray-400">
-                        {employee.auth_user_id ?? 'Nicht verbunden'}
+                        <p className="text-gray-200">{employeeEmailFromName(employee.name)}</p>
+                        <p className="text-xs">{employee.auth_user_id ? 'Verbunden' : 'Nicht verbunden'}</p>
                       </td>
                       <td className="px-3 py-3">
                         <span
@@ -897,6 +987,14 @@ export default function ChinaTownDienstplan() {
                             className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/35 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Deaktivieren
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEmployee(employee)}
+                            disabled={saving}
+                            className="rounded-lg bg-red-600/30 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-600/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Loeschen
                           </button>
                         </div>
                       </td>
