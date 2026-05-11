@@ -6,7 +6,7 @@ const shiftTimes = [
   { label: 'Frueh-Abend', start_time: '17:00', end_time: '19:30', people: 4 },
   { label: 'Spaet-Abend', start_time: '19:30', end_time: '22:00', people: 4 },
 ]
-const roleOptions = ['Gesch\u00e4ftsf\u00fchrer', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
+const roleOptions = ['Mitarbeiter', 'Manager', 'Gesch\u00e4ftsf\u00fchrer', 'Geschaeftsinhaber']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
 
 const inputClass =
