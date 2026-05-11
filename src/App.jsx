@@ -6,7 +6,7 @@ const shiftTimes = [
   { label: 'Frueh-Abend', start_time: '17:00', end_time: '19:30', people: 4 },
   { label: 'Spaet-Abend', start_time: '19:30', end_time: '22:00', people: 4 },
 ]
-const roleOptions = ['Gesch\u00e4ftsf\u00fchrer', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
+const roleOptions = ['Mitarbeiter', 'Manager', 'Gesch\u00e4ftsf\u00fchrer', 'Geschaeftsinhaber']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
 
 const inputClass =
@@ -14,20 +14,17 @@ const inputClass =
 const compactInputClass =
   'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-yellow-400'
 const roleBadgeClasses = {
+  Mitarbeiter: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
+  Manager: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
   Gesch\u00e4ftsf\u00fchrer: 'bg-yellow-400/20 text-yellow-100 ring-yellow-300/30',
-  Service: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
-  K\u00fcche: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
-  Bar: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
-  Kasse: 'bg-orange-400/20 text-orange-100 ring-orange-300/30',
-  Lieferung: 'bg-blue-400/20 text-blue-100 ring-blue-300/30',
-  Aushilfe: 'bg-gray-400/20 text-gray-100 ring-gray-300/30',
+  Geschaeftsinhaber: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
 }
 const emptyEmployeeForm = {
   id: null,
   auth_user_id: '',
   name: '',
   slug: '',
-  role: 'Service',
+  role: 'Mitarbeiter',
   is_admin: false,
   temp_password: '',
 }
