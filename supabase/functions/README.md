@@ -7,7 +7,7 @@ Creates a Supabase Auth user and the matching `employees` row in one admin-only 
 Deploy once:
 
 ```powershell
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
+supabase secrets set SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
 supabase functions deploy create-employee
 ```
 
