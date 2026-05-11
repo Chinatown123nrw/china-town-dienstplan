@@ -165,21 +165,53 @@ export default function ChinaTownDienstplan() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between mb-10">
-          <div>
-            <h1 className="text-5xl font-bold text-yellow-400">
-              China Town
-            </h1>
-            <p className="text-gray-300 mt-2">
-              Automatische Wochenplanung bis 22 Uhr
-            </p>
-          </div>
+        {user && (
+              <div className="mb-10 bg-yellow-400/10 border border-yellow-400/20 rounded-3xl p-6">
+                <h2 className="text-3xl font-bold text-yellow-400 mb-6">
+                  Admin Bereich
+                </h2>
 
-          <button className="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold hover:scale-105 transition">
-            Admin Bereich
-          </button>
+                <div className="grid md:grid-cols-2 gap-4">
+
+                  <button
+                    className="bg-yellow-400 text-black py-4 rounded-2xl font-bold"
+                  >
+                    Dienstplan generieren
+                  </button>
+
+                  <button
+                    className="bg-red-500 text-white py-4 rounded-2xl font-bold"
+                  >
+                    Mitarbeiter verwalten
+                  </button>
+
+                  <button
+                    className="bg-green-500 text-black py-4 rounded-2xl font-bold"
+                  >
+                    Schichten freigeben
+                  </button>
+
+                  <button
+                    className="bg-blue-500 text-white py-4 rounded-2xl font-bold"
+                  >
+                    Wochenplan exportieren
+                  </button>
+
+                </div>
+              </div>
+            )}
         </div>
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h1 className="text-5xl font-bold text-yellow-400">
+                China Town
+              </h1>
 
+              <p className="text-gray-300 mt-2">
+                Automatische Wochenplanung bis 22 Uhr
+              </p>
+            </div>
+          </div>
         <div className="grid md:grid-cols-2 gap-6 mb-16">
           <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
             <h2 className="text-3xl font-bold text-yellow-400 mb-6">
