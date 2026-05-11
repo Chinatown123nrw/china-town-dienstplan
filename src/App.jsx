@@ -207,7 +207,17 @@ export default function ChinaTownDienstplan() {
                         {employee.shift}
                       </span>
 
-                      <button className="bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1 rounded-xl text-xs transition">
+                      <button
+                        onClick={async () => {
+                          await supabase
+                            .from('shifts')
+                            .update({ open: true })
+                            .eq('employee_name', employee.name)
+
+                          location.reload()
+                        }}
+                        className="bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1 rounded-xl text-xs transition"
+                      >
                         Abmelden
                       </button>
                     </div>
