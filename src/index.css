@@ -1,1 +1,35 @@
 @import "tailwindcss";
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  button,
+  input,
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    background: white !important;
+    color: black !important;
+  }
+
+  .print-section,
+  article {
+    break-inside: avoid;
+  }
+
+  .print-section {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  * {
+    color: black !important;
+    background: white !important;
+    border-color: #d1d5db !important;
+  }
+}
