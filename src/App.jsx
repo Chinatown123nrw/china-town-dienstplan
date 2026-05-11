@@ -14,6 +14,15 @@ const inputClass =
   'w-full rounded-2xl border border-white/10 bg-black/30 px-5 py-4 outline-none transition focus:border-yellow-400'
 const compactInputClass =
   'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-yellow-400'
+const roleBadgeClasses = {
+  Gesch\u00e4ftsf\u00fchrer: 'bg-yellow-400/20 text-yellow-100 ring-yellow-300/30',
+  Service: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
+  K\u00fcche: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
+  Bar: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
+  Kasse: 'bg-orange-400/20 text-orange-100 ring-orange-300/30',
+  Lieferung: 'bg-blue-400/20 text-blue-100 ring-blue-300/30',
+  Aushilfe: 'bg-gray-400/20 text-gray-100 ring-gray-300/30',
+}
 const emptyEmployeeForm = {
   id: null,
   auth_user_id: '',
@@ -40,6 +49,22 @@ function normalizeSlug(value) {
     .toLowerCase()
     .replaceAll(' ', '-')
     .replace(/[^a-z0-9-]/g, '')
+}
+
+function roleBadgeClass(role) {
+  return roleBadgeClasses[role] ?? 'bg-white/10 text-gray-100 ring-white/10'
+}
+
+function coverageClass(count, target) {
+  if (count === 0) {
+    return 'bg-red-400'
+  }
+
+  if (count < target) {
+    return 'bg-yellow-400'
+  }
+
+  return 'bg-green-400'
 }
 
 function employeeFromUser(user, employees) {
@@ -120,6 +145,31 @@ export default function ChinaTownDienstplan() {
       })),
     [rows],
   )
+
+  const scheduleStats = useMemo(() => {
+    const planned = rows.filter((row) => !row.open).length
+    const open = rows.filter((row) => row.open).length
+    const target = days.length * shiftTimes.reduce((sum, shift) => sum + shift.people, 0)
+    const coverage = target === 0 ? 0 : Math.round((planned / target) * 100)
+
+    return {
+      planned,
+      open,
+      target,
+      coverage,
+    }
+  }, [rows])
+
+  const myShifts = useMemo(() => {
+    if (!activeEmployee) {
+      return []
+    }
+
+    return rows
+      .filter((row) => !row.open && row.employee_name === activeEmployee.slug)
+      .map((row) => ({ ...row, shift: formatTime(row.start_time, row.end_time) }))
+      .sort(sortRows)
+  }, [activeEmployee, rows])
 
   const loadShifts = useCallback(async () => {
     setLoading(true)
@@ -493,6 +543,34 @@ export default function ChinaTownDienstplan() {
           </div>
         )}
 
+        <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Geplant</p>
+            <p className="mt-2 text-3xl font-bold text-yellow-300">{scheduleStats.planned}</p>
+            <p className="mt-1 text-xs text-gray-400">von {scheduleStats.target} Soll-Schichten</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Offen</p>
+            <p className="mt-2 text-3xl font-bold text-red-200">{scheduleStats.open}</p>
+            <p className="mt-1 text-xs text-gray-400">freigegebene Schichten</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Besetzung</p>
+            <p className="mt-2 text-3xl font-bold text-green-300">{scheduleStats.coverage}%</p>
+            <div className="mt-3 h-2 rounded-full bg-black/40">
+              <div
+                className="h-2 rounded-full bg-green-400"
+                style={{ width: `${Math.min(scheduleStats.coverage, 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Meine Woche</p>
+            <p className="mt-2 text-3xl font-bold text-blue-200">{myShifts.length}</p>
+            <p className="mt-1 text-xs text-gray-400">{activeEmployee ? 'eigene Schichten' : 'nach Login sichtbar'}</p>
+          </div>
+        </section>
+
         <section className="mb-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="mb-4 flex items-center justify-between gap-4">
@@ -579,6 +657,32 @@ export default function ChinaTownDienstplan() {
           </div>
         </section>
 
+        {activeEmployee && (
+          <section className="mb-5 rounded-3xl border border-blue-400/20 bg-white/5 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold text-blue-100">Meine Schichten</h2>
+                <p className="text-sm text-gray-400">Schneller Blick auf deine aktuelle Woche.</p>
+              </div>
+              <span className="rounded-full bg-blue-400/15 px-3 py-1 text-sm font-semibold text-blue-100">
+                {myShifts.length}
+              </span>
+            </div>
+            {myShifts.length === 0 ? (
+              <p className="rounded-2xl bg-black/30 p-4 text-sm text-gray-400">Du bist aktuell in keiner Schicht eingeplant.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {myShifts.map((shift) => (
+                  <div key={shift.id} className="rounded-2xl bg-black/30 p-4">
+                    <p className="font-semibold text-white">{shift.day}</p>
+                    <p className="mt-1 text-sm text-blue-100">{shift.shift}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="print-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -593,53 +697,76 @@ export default function ChinaTownDienstplan() {
           {loading ? (
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-gray-300">Lade Dienstplan...</div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-7">
               {calendarDays.map((day) => (
-                <article key={day.day} className="min-h-[260px] rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="mb-4 text-xl font-bold text-yellow-300">{day.day}</h3>
-                  <div className="space-y-3">
+                <article key={day.day} className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl shadow-black/10">
+                  <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+                    <h3 className="text-xl font-bold text-yellow-300">{day.day}</h3>
+                    <span className="rounded-full bg-black/30 px-3 py-1 text-xs text-gray-300">
+                      {day.shifts.reduce((sum, shift) => sum + shift.employees.length, 0)} geplant
+                    </span>
+                  </div>
+                  <div className="space-y-4">
                     {day.shifts.map((shift) => (
-                      <div key={`${day.day}-${shift.label}`} className="rounded-2xl bg-black/35 p-3">
-                        <div className="mb-3 flex items-center justify-between gap-2">
+                      <div key={`${day.day}-${shift.label}`} className="rounded-2xl bg-black/35 p-3 ring-1 ring-white/5">
+                        <div className="mb-3 flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold">{shift.label}</p>
+                            <p className="font-semibold text-white">{shift.label}</p>
                             <p className="text-xs text-gray-400">{formatTime(shift.start_time, shift.end_time)}</p>
                           </div>
-                          {shift.open.length > 0 && (
-                            <span className="rounded-full bg-yellow-400/20 px-2 py-1 text-xs text-yellow-200">
-                              {shift.open.length} offen
+                          <div className="text-right">
+                            <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-gray-200">
+                              {shift.employees.length}/{shift.people}
                             </span>
-                          )}
+                            {shift.open.length > 0 && (
+                              <p className="mt-2 text-xs font-semibold text-yellow-200">{shift.open.length} offen</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mb-3 h-1.5 rounded-full bg-white/10">
+                          <div
+                            className={`h-1.5 rounded-full ${coverageClass(shift.employees.length, shift.people)}`}
+                            style={{ width: `${Math.min((shift.employees.length / shift.people) * 100, 100)}%` }}
+                          />
                         </div>
 
                         <div className="space-y-2">
                           {shift.employees.length === 0 ? (
-                            <p className="text-sm text-gray-500">Keine Mitarbeiter geplant.</p>
+                            <p className="rounded-xl border border-dashed border-white/10 px-3 py-2 text-sm text-gray-500">
+                              Keine Mitarbeiter geplant.
+                            </p>
                           ) : (
-                            shift.employees.map((employee) => (
-                              <div
-                                key={employee.id}
-                                className="flex items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2"
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-semibold">
-                                    {employeesBySlug.get(employee.employee_name)?.name ?? formatName(employee.employee_name)}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {employeesBySlug.get(employee.employee_name)?.role ?? employee.employee_name}
-                                  </p>
+                            shift.employees.map((employee) => {
+                              const employeeDetails = employeesBySlug.get(employee.employee_name)
+                              const employeeRole = employeeDetails?.role ?? 'Nicht zugeordnet'
+
+                              return (
+                                <div
+                                  key={employee.id}
+                                  className="flex items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold">
+                                      {employeeDetails?.name ?? formatName(employee.employee_name)}
+                                    </p>
+                                    <span
+                                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${roleBadgeClass(employeeRole)}`}
+                                    >
+                                      {employeeRole}
+                                    </span>
+                                  </div>
+                                  {(isAdmin || employee.employee_name === activeEmployee?.slug) && (
+                                    <button
+                                      onClick={() => releaseShift(employee)}
+                                      disabled={saving}
+                                      className="shrink-0 rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Frei
+                                    </button>
+                                  )}
                                 </div>
-                                {(isAdmin || employee.employee_name === activeEmployee?.slug) && (
-                                  <button
-                                    onClick={() => releaseShift(employee)}
-                                    disabled={saving}
-                                    className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    Frei
-                                  </button>
-                                )}
-                              </div>
-                            ))
+                              )
+                            })
                           )}
                         </div>
                       </div>
@@ -788,6 +915,9 @@ export default function ChinaTownDienstplan() {
               <h2 className="text-2xl font-bold text-yellow-400">Offene Schichten</h2>
               <p className="text-sm text-gray-400">Mitarbeiter uebernehmen automatisch mit ihrem eigenen Konto.</p>
             </div>
+            <span className="rounded-full bg-yellow-400/15 px-3 py-1 text-sm font-semibold text-yellow-100">
+              {openShifts.length} offen
+            </span>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -795,12 +925,16 @@ export default function ChinaTownDienstplan() {
               <p className="rounded-2xl bg-black/30 p-4 text-sm text-gray-400">Aktuell gibt es keine offenen Schichten.</p>
             ) : (
               openShifts.map((shift) => (
-                <div key={shift.id} className="flex items-center justify-between gap-4 rounded-2xl bg-black/30 p-4">
+                <div
+                  key={shift.id}
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-yellow-400/15 bg-black/30 p-4"
+                >
                   <div>
-                    <p className="font-semibold">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-yellow-300">Jetzt offen</p>
+                    <p className="mt-1 font-semibold">
                       {shift.day} - {shift.shift}
                     </p>
-                    <p className="text-sm text-gray-400">Freigegeben</p>
+                    <p className="text-sm text-gray-400">{activeEmployee ? `Uebernahme als ${activeEmployee.name}` : 'Login erforderlich'}</p>
                   </div>
                   <button
                     onClick={() => takeShift(shift)}
