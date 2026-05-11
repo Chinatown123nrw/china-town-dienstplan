@@ -38,6 +38,40 @@ as $$
   )
 $$;
 
+create or replace function public.replace_schedule(new_shifts jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.current_employee_is_admin() then
+    raise exception 'Only admins can replace the schedule' using errcode = '42501';
+  end if;
+
+  delete from public.shifts;
+
+  insert into public.shifts (day, start_time, end_time, employee_name, open)
+  select
+    shift_row.day,
+    shift_row.start_time::time,
+    shift_row.end_time::time,
+    shift_row.employee_name,
+    coalesce(shift_row.open, false)
+  from jsonb_to_recordset(new_shifts) as shift_row (
+    day text,
+    start_time text,
+    end_time text,
+    employee_name text,
+    open boolean
+  );
+end;
+$$;
+
+grant execute on function public.current_employee_slug() to authenticated;
+grant execute on function public.current_employee_is_admin() to authenticated;
+grant execute on function public.replace_schedule(jsonb) to authenticated;
+
 drop policy if exists "Users can read active employees" on employees;
 drop policy if exists "Admins can manage employees" on employees;
 drop policy if exists "Authenticated users can read shifts" on shifts;

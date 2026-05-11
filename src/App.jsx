@@ -7,7 +7,7 @@ const shiftTimes = [
   { label: 'Abend 1', start_time: '17:00', end_time: '20:00', people: 4 },
   { label: 'Abend 2', start_time: '20:00', end_time: '22:30', people: 4 },
 ]
-const roleOptions = ['Geschäftsführer', 'Service', 'Küche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
+const roleOptions = ['Gesch\u00e4ftsf\u00fchrer', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
 
 const inputClass =
@@ -351,18 +351,10 @@ export default function ChinaTownDienstplan() {
       })
     })
 
-    const { error: deleteError } = await supabase.from('shifts').delete().not('id', 'is', null)
+    const { error } = await supabase.rpc('replace_schedule', { new_shifts: rowsToInsert })
 
-    if (deleteError) {
-      setMessage(`Alter Dienstplan konnte nicht ersetzt werden: ${deleteError.message}`)
-      setSaving(false)
-      return
-    }
-
-    const { error: insertError } = await supabase.from('shifts').insert(rowsToInsert)
-
-    if (insertError) {
-      setMessage(`Dienstplan konnte nicht gespeichert werden: ${insertError.message}`)
+    if (error) {
+      setMessage(`Dienstplan konnte nicht gespeichert werden: ${error.message}`)
       setSaving(false)
       return
     }
