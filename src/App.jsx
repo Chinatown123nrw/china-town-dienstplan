@@ -7,10 +7,21 @@ const shiftTimes = [
   { label: 'Abend 1', start_time: '17:00', end_time: '20:00', people: 4 },
   { label: 'Abend 2', start_time: '20:00', end_time: '22:30', people: 4 },
 ]
+const roleOptions = ['Geschäftsführer', 'Service', 'Küche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
 
 const inputClass =
   'w-full rounded-2xl border border-white/10 bg-black/30 px-5 py-4 outline-none transition focus:border-yellow-400'
+const compactInputClass =
+  'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-yellow-400'
+const emptyEmployeeForm = {
+  id: null,
+  auth_user_id: '',
+  name: '',
+  slug: '',
+  role: 'Service',
+  is_admin: false,
+}
 
 function formatTime(start, end) {
   return `${start?.slice(0, 5) ?? '--:--'} - ${end?.slice(0, 5) ?? '--:--'}`
@@ -18,6 +29,14 @@ function formatTime(start, end) {
 
 function formatName(name) {
   return name.replace(/^\d+-/, '').replaceAll('-', ' ')
+}
+
+function normalizeSlug(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replaceAll(' ', '-')
+    .replace(/[^a-z0-9-]/g, '')
 }
 
 function employeeFromUser(user, employees) {
@@ -58,6 +77,7 @@ export default function ChinaTownDienstplan() {
   const [password, setPassword] = useState('')
   const [employees, setEmployees] = useState([])
   const [rows, setRows] = useState([])
+  const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -195,6 +215,21 @@ export default function ChinaTownDienstplan() {
     setMessage('Abgemeldet.')
   }
 
+  function resetEmployeeForm() {
+    setEmployeeForm(emptyEmployeeForm)
+  }
+
+  function editEmployee(employee) {
+    setEmployeeForm({
+      id: employee.id,
+      auth_user_id: employee.auth_user_id ?? '',
+      name: employee.name,
+      slug: employee.slug,
+      role: employee.role,
+      is_admin: employee.is_admin,
+    })
+  }
+
   function requireAdmin() {
     if (isAdmin) {
       return true
@@ -202,6 +237,70 @@ export default function ChinaTownDienstplan() {
 
     setMessage('Diese Aktion ist nur fuer Admins erlaubt.')
     return false
+  }
+
+  async function saveEmployee(event) {
+    event.preventDefault()
+
+    if (!requireAdmin()) {
+      return
+    }
+
+    const payload = {
+      auth_user_id: employeeForm.auth_user_id.trim() || null,
+      name: employeeForm.name.trim(),
+      slug: normalizeSlug(employeeForm.slug),
+      role: employeeForm.role,
+      is_admin: employeeForm.is_admin,
+      active: true,
+    }
+
+    if (!payload.name || !payload.slug || !payload.role) {
+      setMessage('Name, Slug und Rolle sind Pflichtfelder.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const query = employeeForm.id
+      ? supabase.from('employees').update(payload).eq('id', employeeForm.id)
+      : supabase.from('employees').insert(payload)
+
+    const { error } = await query
+
+    if (error) {
+      setMessage(`Mitarbeiter konnte nicht gespeichert werden: ${error.message}`)
+    } else {
+      await loadEmployees()
+      resetEmployeeForm()
+      setMessage('Mitarbeiter wurde gespeichert.')
+    }
+
+    setSaving(false)
+  }
+
+  async function deactivateEmployee(employee) {
+    if (!requireAdmin()) {
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error } = await supabase.from('employees').update({ active: false }).eq('id', employee.id)
+
+    if (error) {
+      setMessage(`Mitarbeiter konnte nicht deaktiviert werden: ${error.message}`)
+    } else {
+      await loadEmployees()
+      if (employeeForm.id === employee.id) {
+        resetEmployeeForm()
+      }
+      setMessage('Mitarbeiter wurde deaktiviert.')
+    }
+
+    setSaving(false)
   }
 
   async function generateSchedule() {
@@ -273,15 +372,18 @@ export default function ChinaTownDienstplan() {
     setMessage('Dienstplan wurde automatisch generiert.')
   }
 
-  async function releaseShift(shiftId) {
-    if (!requireAdmin()) {
+  async function releaseShift(shift) {
+    const canRelease = isAdmin || shift.employee_name === activeEmployee?.slug
+
+    if (!canRelease) {
+      setMessage('Du kannst nur eigene Schichten freigeben.')
       return
     }
 
     setSaving(true)
     setMessage('')
 
-    const { error } = await supabase.from('shifts').update({ open: true, employee_name: null }).eq('id', shiftId)
+    const { error } = await supabase.from('shifts').update({ open: true, employee_name: null }).eq('id', shift.id)
 
     if (error) {
       setMessage(`Schicht konnte nicht freigegeben werden: ${error.message}`)
@@ -486,9 +588,9 @@ export default function ChinaTownDienstplan() {
                                     {employeesBySlug.get(employee.employee_name)?.role ?? employee.employee_name}
                                   </p>
                                 </div>
-                                {isAdmin && (
+                                {(isAdmin || employee.employee_name === activeEmployee?.slug) && (
                                   <button
-                                    onClick={() => releaseShift(employee.id)}
+                                    onClick={() => releaseShift(employee)}
                                     disabled={saving}
                                     className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/40 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
@@ -507,6 +609,137 @@ export default function ChinaTownDienstplan() {
             </div>
           )}
         </section>
+
+        {isAdmin && (
+          <section className="no-print mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-yellow-400">Mitarbeiterverwaltung</h2>
+                <p className="text-sm text-gray-400">Mitarbeiter, Rollen, Adminrechte und Auth-User-Zuordnung.</p>
+              </div>
+              {employeeForm.id && (
+                <button
+                  onClick={resetEmployeeForm}
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-200 transition hover:bg-white/10"
+                >
+                  Neu
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={saveEmployee} className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
+              <input
+                className={compactInputClass}
+                placeholder="Name"
+                value={employeeForm.name}
+                onChange={(event) =>
+                  setEmployeeForm((form) => ({
+                    ...form,
+                    name: event.target.value,
+                    slug: form.id || form.slug ? form.slug : normalizeSlug(event.target.value),
+                  }))
+                }
+              />
+              <input
+                className={compactInputClass}
+                placeholder="Slug"
+                value={employeeForm.slug}
+                onChange={(event) => setEmployeeForm((form) => ({ ...form, slug: event.target.value }))}
+              />
+              <select
+                className={compactInputClass}
+                value={employeeForm.role}
+                onChange={(event) => setEmployeeForm((form) => ({ ...form, role: event.target.value }))}
+              >
+                {roleOptions.map((role) => (
+                  <option key={role} value={role} className="bg-[#130909]">
+                    {role}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={compactInputClass}
+                placeholder="Auth User ID"
+                value={employeeForm.auth_user_id}
+                onChange={(event) => setEmployeeForm((form) => ({ ...form, auth_user_id: event.target.value }))}
+              />
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={employeeForm.is_admin}
+                    onChange={(event) => setEmployeeForm((form) => ({ ...form, is_admin: event.target.checked }))}
+                  />
+                  Admin
+                </label>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-yellow-400 px-4 py-2 text-sm font-bold text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Speichern
+                </button>
+              </div>
+            </form>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-left text-sm">
+                <thead className="text-xs uppercase tracking-[0.14em] text-gray-400">
+                  <tr>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Slug</th>
+                    <th className="px-3 py-2">Rolle</th>
+                    <th className="px-3 py-2">Auth User</th>
+                    <th className="px-3 py-2">Rechte</th>
+                    <th className="px-3 py-2 text-right">Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((employee) => (
+                    <tr key={employee.id} className="bg-black/30">
+                      <td className="rounded-l-xl px-3 py-3 font-semibold">{employee.name}</td>
+                      <td className="px-3 py-3 text-gray-300">{employee.slug}</td>
+                      <td className="px-3 py-3 text-gray-300">{employee.role}</td>
+                      <td className="max-w-[220px] truncate px-3 py-3 text-gray-400">
+                        {employee.auth_user_id ?? 'Nicht verbunden'}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={
+                            employee.is_admin
+                              ? 'rounded-full bg-yellow-400/20 px-2 py-1 text-xs text-yellow-200'
+                              : 'rounded-full bg-white/10 px-2 py-1 text-xs text-gray-300'
+                          }
+                        >
+                          {employee.is_admin ? 'Admin' : 'Mitarbeiter'}
+                        </span>
+                      </td>
+                      <td className="rounded-r-xl px-3 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editEmployee(employee)}
+                            className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/35"
+                          >
+                            Bearbeiten
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deactivateEmployee(employee)}
+                            disabled={saving}
+                            className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/35 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Deaktivieren
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <section className="mt-6 rounded-3xl border border-yellow-400/20 bg-white/5 p-5">
           <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
