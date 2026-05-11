@@ -6,7 +6,7 @@ const shiftTimes = [
   { label: 'Frueh-Abend', start_time: '17:00', end_time: '19:30', people: 4 },
   { label: 'Spaet-Abend', start_time: '19:30', end_time: '22:00', people: 4 },
 ]
-const roleOptions = ['Mitarbeiter', 'Manager', 'Gesch\u00e4ftsf\u00fchrer', 'Geschaeftsinhaber']
+const roleOptions = ['Gesch\u00e4ftsf\u00fchrer', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
 
 const inputClass =
@@ -14,17 +14,20 @@ const inputClass =
 const compactInputClass =
   'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-yellow-400'
 const roleBadgeClasses = {
-  Mitarbeiter: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
-  Manager: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
   Gesch\u00e4ftsf\u00fchrer: 'bg-yellow-400/20 text-yellow-100 ring-yellow-300/30',
-  Geschaeftsinhaber: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
+  Service: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
+  K\u00fcche: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
+  Bar: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
+  Kasse: 'bg-orange-400/20 text-orange-100 ring-orange-300/30',
+  Lieferung: 'bg-blue-400/20 text-blue-100 ring-blue-300/30',
+  Aushilfe: 'bg-gray-400/20 text-gray-100 ring-gray-300/30',
 }
 const emptyEmployeeForm = {
   id: null,
   auth_user_id: '',
   name: '',
   slug: '',
-  role: 'Mitarbeiter',
+  role: 'Service',
   is_admin: false,
   temp_password: '',
 }
@@ -347,13 +350,14 @@ export default function ChinaTownDienstplan() {
       return
     }
 
-    const payload = {
+    const basePayload = {
       name: employeeForm.name.trim(),
       slug: normalizeSlug(employeeForm.slug),
       role: employeeForm.role,
       is_admin: employeeForm.is_admin,
       active: true,
     }
+    const payload = employeeForm.id ? basePayload : { ...basePayload, auth_user_id: null }
 
     if (!payload.name || !payload.slug || !payload.role) {
       setMessage('Name, Slug und Rolle sind Pflichtfelder.')
@@ -363,20 +367,19 @@ export default function ChinaTownDienstplan() {
     setSaving(true)
     setMessage('')
 
-    const { data, error } = employeeForm.id
-      ? await supabase.from('employees').update(payload).eq('id', employeeForm.id).select().single()
-      : await supabase.functions.invoke('create-employee', {
-          body: {
-            ...payload,
-            password: employeeForm.temp_password,
-          },
-        })
+    const query = employeeForm.id
+      ? supabase.from('employees').update(payload).eq('id', employeeForm.id)
+      : supabase.from('employees').insert(payload)
+
+    const { error } = await query
 
     if (error) {
       setMessage(`Mitarbeiter konnte nicht gespeichert werden: ${error.message}`)
     } else {
       await loadEmployees()
-      const loginInfo = employeeForm.id ? '' : ` Login: ${data.email} / Erstpasswort ${data.password}.`
+      const loginInfo = employeeForm.id
+        ? ''
+        : ` Login vorbereiten: ${employeeEmailFromName(payload.name)} / Erstpasswort ${employeeForm.temp_password}.`
       resetEmployeeForm()
       setMessage(`Mitarbeiter wurde gespeichert.${loginInfo}`)
     }
