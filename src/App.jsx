@@ -33,30 +33,29 @@ export default function ChinaTownDienstplan() {
 
     if (!error) {
       const grouped = {}
+      const open = []
 
       data.forEach((shift) => {
-  if (shift.open === true) {
-    setOpenShifts((prev) => [
-      ...prev,
-      {
-        id: shift.id,
-        day: shift.day,
-        shift: `${shift.start_time} - ${shift.end_time}`,
-      },
-    ])
-  }
+        if (shift.open === true) {
+          open.push({
+            id: shift.id,
+            day: shift.day,
+            shift: `${shift.start_time} - ${shift.end_time}`,
+          })
+        }
 
-  if (!grouped[shift.day]) {
-    grouped[shift.day] = []
-  }
+        if (!grouped[shift.day]) {
+          grouped[shift.day] = []
+        }
 
-  if (shift.open !== true) {
-  grouped[shift.day].push({
-    name: shift.employee_name,
-    shift: `${shift.start_time} - ${shift.end_time}`,
-    type: 'Schicht',
-  })
-  }
+        if (shift.open !== true) {
+          grouped[shift.day].push({
+            name: shift.employee_name,
+            shift: `${shift.start_time} - ${shift.end_time}`,
+            type: 'Schicht',
+          })
+        }
+      })
 
       const formatted = Object.keys(grouped).map((day) => ({
         day,
@@ -64,6 +63,7 @@ export default function ChinaTownDienstplan() {
       }))
 
       setShifts(formatted)
+      setOpenShifts(open)
     }
   }
 
