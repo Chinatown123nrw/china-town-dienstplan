@@ -347,14 +347,13 @@ export default function ChinaTownDienstplan() {
       return
     }
 
-    const basePayload = {
+    const payload = {
       name: employeeForm.name.trim(),
       slug: normalizeSlug(employeeForm.slug),
       role: employeeForm.role,
       is_admin: employeeForm.is_admin,
       active: true,
     }
-    const payload = employeeForm.id ? basePayload : { ...basePayload, auth_user_id: null }
 
     if (!payload.name || !payload.slug || !payload.role) {
       setMessage('Name, Slug und Rolle sind Pflichtfelder.')
@@ -364,19 +363,20 @@ export default function ChinaTownDienstplan() {
     setSaving(true)
     setMessage('')
 
-    const query = employeeForm.id
-      ? supabase.from('employees').update(payload).eq('id', employeeForm.id)
-      : supabase.from('employees').insert(payload)
-
-    const { error } = await query
+    const { data, error } = employeeForm.id
+      ? await supabase.from('employees').update(payload).eq('id', employeeForm.id).select().single()
+      : await supabase.functions.invoke('create-employee', {
+          body: {
+            ...payload,
+            password: employeeForm.temp_password,
+          },
+        })
 
     if (error) {
       setMessage(`Mitarbeiter konnte nicht gespeichert werden: ${error.message}`)
     } else {
       await loadEmployees()
-      const loginInfo = employeeForm.id
-        ? ''
-        : ` Login vorbereiten: ${employeeEmailFromName(payload.name)} / Erstpasswort ${employeeForm.temp_password}.`
+      const loginInfo = employeeForm.id ? '' : ` Login: ${data.email} / Erstpasswort ${data.password}.`
       resetEmployeeForm()
       setMessage(`Mitarbeiter wurde gespeichert.${loginInfo}`)
     }
