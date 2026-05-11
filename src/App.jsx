@@ -1,34 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 
-const employees = [
-  { name: '01-santiago-oconner', role: 'Geschaeftsfuehrer' },
-  { name: '02-david-lox', role: 'Geschaeftsfuehrer' },
-  { name: '03-amelie-bloom', role: 'Service' },
-  { name: '04-miguel-monroe', role: 'Kueche' },
-  { name: '05-raff-raichts', role: 'Bar' },
-  { name: '06-bella-dark', role: 'Kasse' },
-  { name: '07-jason-brocks', role: 'Lieferung' },
-  { name: '08-jessy-hart-vorlauf', role: 'Service' },
-  { name: '09-fabio-caruso', role: 'Kueche' },
-  { name: '10-cardi-oconner', role: 'Bar' },
-  { name: '11-gokay-sahin', role: 'Service' },
-  { name: '12-aushilfe', role: 'Aushilfe' },
-  { name: '13-chris-martens', role: 'Lieferung' },
-  { name: '14-lilly-bennett', role: 'Kasse' },
-  { name: '15-melik-hak', role: 'Service' },
-]
-
 const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const shiftTimes = [
   { label: 'Mittag', start_time: '11:00', end_time: '15:00', people: 3 },
-  { label: 'Abend', start_time: '17:00', end_time: '22:00', people: 4 },
+  { label: 'Abend 1', start_time: '17:00', end_time: '20:00', people: 4 },
+  { label: 'Abend 2', start_time: '20:00', end_time: '22:30', people: 4 },
 ]
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
-const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS ?? '')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean)
 
 const inputClass =
   'w-full rounded-2xl border border-white/10 bg-black/30 px-5 py-4 outline-none transition focus:border-yellow-400'
@@ -41,21 +20,12 @@ function formatName(name) {
   return name.replace(/^\d+-/, '').replaceAll('-', ' ')
 }
 
-function isAdminUser(user) {
-  const role = user?.app_metadata?.role ?? user?.user_metadata?.role
-  return role === 'admin' || adminEmails.includes(user?.email?.toLowerCase())
-}
-
-function employeeFromUser(user) {
-  const metadataName =
-    user?.user_metadata?.employee_name ?? user?.user_metadata?.employeeName ?? user?.app_metadata?.employee_name
-
-  if (metadataName) {
-    return employees.find((employee) => employee.name === metadataName)
+function employeeFromUser(user, employees) {
+  if (!user) {
+    return null
   }
 
-  const emailHandle = user?.email?.split('@')[0]?.toLowerCase()
-  return employees.find((employee) => employee.name.includes(emailHandle))
+  return employees.find((employee) => employee.auth_user_id === user.id) ?? null
 }
 
 function sameShift(a, b) {
@@ -86,13 +56,18 @@ export default function ChinaTownDienstplan() {
   const [sessionUser, setSessionUser] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [employees, setEmployees] = useState([])
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
-  const isAdmin = useMemo(() => isAdminUser(sessionUser), [sessionUser])
-  const activeEmployee = useMemo(() => employeeFromUser(sessionUser), [sessionUser])
+  const activeEmployee = useMemo(() => employeeFromUser(sessionUser, employees), [sessionUser, employees])
+  const isAdmin = Boolean(activeEmployee?.is_admin)
+  const employeesBySlug = useMemo(
+    () => new Map(employees.map((employee) => [employee.slug, employee])),
+    [employees],
+  )
 
   const openShifts = useMemo(
     () =>
@@ -141,10 +116,27 @@ export default function ChinaTownDienstplan() {
     setLoading(false)
   }, [])
 
+  const loadEmployees = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('id, auth_user_id, name, slug, role, is_admin, active')
+      .eq('active', true)
+      .order('slug')
+
+    if (error) {
+      setMessage(`Mitarbeiter konnten nicht geladen werden: ${error.message}`)
+      setEmployees([])
+      return
+    }
+
+    setEmployees(data ?? [])
+  }, [])
+
   useEffect(() => {
     // The first load intentionally synchronizes React state with Supabase on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadShifts()
+    loadEmployees()
 
     supabase.auth.getUser().then(({ data }) => {
       setSessionUser(data.user ?? null)
@@ -161,11 +153,19 @@ export default function ChinaTownDienstplan() {
       })
       .subscribe()
 
+    const employeesChannel = supabase
+      .channel('public:employees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+        loadEmployees()
+      })
+      .subscribe()
+
     return () => {
       authListener.subscription.unsubscribe()
       supabase.removeChannel(channel)
+      supabase.removeChannel(employeesChannel)
     }
-  }, [loadShifts])
+  }, [loadEmployees, loadShifts])
 
   async function login() {
     setSaving(true)
@@ -180,10 +180,13 @@ export default function ChinaTownDienstplan() {
       return
     }
 
-    const employee = employeeFromUser(data.user)
-    const admin = isAdminUser(data.user)
+    const employee = employeeFromUser(data.user, employees)
     setSessionUser(data.user)
-    setMessage(admin ? 'Admin Login erfolgreich.' : `Angemeldet als ${employee?.name ?? data.user.email}.`)
+    setMessage(
+      employee
+        ? `Angemeldet als ${employee.name}${employee.is_admin ? ' (Admin)' : ''}.`
+        : 'Login erfolgreich. Dieses Konto ist noch keinem Mitarbeiter zugeordnet.',
+    )
   }
 
   async function logout() {
@@ -209,6 +212,12 @@ export default function ChinaTownDienstplan() {
     setSaving(true)
     setMessage('')
 
+    if (employees.length === 0) {
+      setMessage('Keine aktiven Mitarbeiter gefunden.')
+      setSaving(false)
+      return
+    }
+
     const rowsToInsert = []
     let cursor = 0
 
@@ -221,8 +230,8 @@ export default function ChinaTownDienstplan() {
           let guard = 0
 
           while (
-            (picked.has(employee.name) ||
-              hasConflict(rowsToInsert, { ...time, day, employee_name: employee.name, open: false })) &&
+            (picked.has(employee.slug) ||
+              hasConflict(rowsToInsert, { ...time, day, employee_name: employee.slug, open: false })) &&
             guard < employees.length
           ) {
             cursor += 1
@@ -230,10 +239,10 @@ export default function ChinaTownDienstplan() {
             employee = employees[cursor % employees.length]
           }
 
-          picked.add(employee.name)
+          picked.add(employee.slug)
           rowsToInsert.push({
             day,
-            employee_name: employee.name,
+            employee_name: employee.slug,
             start_time: time.start_time,
             end_time: time.end_time,
             open: false,
@@ -290,7 +299,7 @@ export default function ChinaTownDienstplan() {
       return
     }
 
-    const candidate = { ...shift, employee_name: activeEmployee.name, open: false }
+    const candidate = { ...shift, employee_name: activeEmployee.slug, open: false }
     if (rows.some((row) => !row.open && hasConflict([row], candidate))) {
       setMessage('Diese Uebernahme ist wegen der Konfliktregel nicht erlaubt.')
       return
@@ -301,7 +310,7 @@ export default function ChinaTownDienstplan() {
 
     const { error } = await supabase
       .from('shifts')
-      .update({ open: false, employee_name: activeEmployee.name })
+      .update({ open: false, employee_name: activeEmployee.slug })
       .eq('id', shift.id)
       .eq('open', true)
 
@@ -378,7 +387,7 @@ export default function ChinaTownDienstplan() {
                 </div>
                 <div className="rounded-2xl bg-black/30 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Rolle</p>
-                  <p className="mt-2 font-semibold">{isAdmin ? 'Admin' : 'Mitarbeiter'}</p>
+                  <p className="mt-2 font-semibold">{isAdmin ? 'Admin' : (activeEmployee?.role ?? 'Nicht zugeordnet')}</p>
                 </div>
                 <div className="rounded-2xl bg-black/30 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Konto</p>
@@ -470,8 +479,12 @@ export default function ChinaTownDienstplan() {
                                 className="flex items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2"
                               >
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-semibold">{formatName(employee.employee_name)}</p>
-                                  <p className="text-xs text-gray-500">{employee.employee_name}</p>
+                                  <p className="truncate text-sm font-semibold">
+                                    {employeesBySlug.get(employee.employee_name)?.name ?? formatName(employee.employee_name)}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {employeesBySlug.get(employee.employee_name)?.role ?? employee.employee_name}
+                                  </p>
                                 </div>
                                 {isAdmin && (
                                   <button
