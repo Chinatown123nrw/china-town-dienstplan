@@ -280,6 +280,5 @@ export default function ChinaTownDienstplan() {
           </div>
         </div>
       </div>
-    </div>
   )
 }
