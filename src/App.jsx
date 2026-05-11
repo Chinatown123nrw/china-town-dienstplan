@@ -22,6 +22,9 @@ const emptyEmployeeForm = {
   role: 'Service',
   is_admin: false,
 }
+const loginAliases = {
+  chinaadmin: 'admin@chinatown.de',
+}
 
 function formatTime(start, end) {
   return `${start?.slice(0, 5) ?? '--:--'} - ${end?.slice(0, 5) ?? '--:--'}`
@@ -75,6 +78,7 @@ export default function ChinaTownDienstplan() {
   const [sessionUser, setSessionUser] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [employees, setEmployees] = useState([])
   const [rows, setRows] = useState([])
   const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm)
@@ -191,7 +195,9 @@ export default function ChinaTownDienstplan() {
     setSaving(true)
     setMessage('')
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const loginName = email.trim().toLowerCase()
+    const loginEmail = loginAliases[loginName] ?? loginName
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
 
     setSaving(false)
 
@@ -202,6 +208,7 @@ export default function ChinaTownDienstplan() {
 
     const employee = employeeFromUser(data.user, employees)
     setSessionUser(data.user)
+    setPassword('')
     setMessage(
       employee
         ? `Angemeldet als ${employee.name}${employee.is_admin ? ' (Admin)' : ''}.`
@@ -212,7 +219,31 @@ export default function ChinaTownDienstplan() {
   async function logout() {
     await supabase.auth.signOut()
     setSessionUser(null)
+    setNewPassword('')
     setMessage('Abgemeldet.')
+  }
+
+  async function changePassword(event) {
+    event.preventDefault()
+
+    if (newPassword.length < 6) {
+      setMessage('Das neue Passwort muss mindestens 6 Zeichen lang sein.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+
+    if (error) {
+      setMessage(`Passwort konnte nicht geaendert werden: ${error.message}`)
+    } else {
+      setNewPassword('')
+      setMessage('Passwort wurde geaendert.')
+    }
+
+    setSaving(false)
   }
 
   function resetEmployeeForm() {
@@ -474,26 +505,44 @@ export default function ChinaTownDienstplan() {
             </div>
 
             {sessionUser ? (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Status</p>
-                  <p className="mt-2 font-semibold text-green-300">Angemeldet</p>
+              <div className="grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-black/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Status</p>
+                    <p className="mt-2 font-semibold text-green-300">Angemeldet</p>
+                  </div>
+                  <div className="rounded-2xl bg-black/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Rolle</p>
+                    <p className="mt-2 font-semibold">{isAdmin ? 'Admin' : (activeEmployee?.role ?? 'Nicht zugeordnet')}</p>
+                  </div>
+                  <div className="rounded-2xl bg-black/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Konto</p>
+                    <p className="mt-2 truncate font-semibold">{activeEmployee?.name ?? sessionUser.email}</p>
+                  </div>
                 </div>
-                <div className="rounded-2xl bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Rolle</p>
-                  <p className="mt-2 font-semibold">{isAdmin ? 'Admin' : (activeEmployee?.role ?? 'Nicht zugeordnet')}</p>
-                </div>
-                <div className="rounded-2xl bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Konto</p>
-                  <p className="mt-2 truncate font-semibold">{activeEmployee?.name ?? sessionUser.email}</p>
-                </div>
+                <form onSubmit={changePassword} className="grid gap-3 rounded-2xl bg-black/30 p-4 md:grid-cols-[1fr_auto]">
+                  <input
+                    className={compactInputClass}
+                    type="password"
+                    placeholder="Neues Passwort"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving || !newPassword}
+                    className="rounded-xl bg-yellow-400 px-4 py-2 text-sm font-bold text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Passwort aendern
+                  </button>
+                </form>
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
                 <input
                   className={inputClass}
-                  type="email"
-                  placeholder="E-Mail"
+                  type="text"
+                  placeholder="Benutzername oder E-Mail"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                 />
