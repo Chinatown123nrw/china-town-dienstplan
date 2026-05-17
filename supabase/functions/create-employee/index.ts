@@ -5,7 +5,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const roleOptions = new Set(['Mitarbeiter', 'Manager', 'Geschäftsführer', 'Geschaeftsinhaber'])
+const roleOptions = new Set([
+  'Mitarbeiter',
+  'Manager',
+  'Service',
+  'Küche',
+  'Bar',
+  'Kasse',
+  'Lieferung',
+  'Aushilfe',
+  'Geschäftsführer',
+  'Geschaeftsinhaber',
+])
 
 function normalizeSlug(value: string) {
   return value
@@ -93,8 +104,8 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Invalid role' }, 400)
   }
 
-  if (!/^\d{5}$/.test(password)) {
-    return jsonResponse({ error: 'Initial password must contain exactly 5 digits' }, 400)
+  if (password.length < 6) {
+    return jsonResponse({ error: 'Initial password must contain at least 6 characters' }, 400)
   }
 
   const { data: createdUser, error: createUserError } = await adminClient.auth.admin.createUser({

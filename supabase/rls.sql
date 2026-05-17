@@ -5,6 +5,18 @@
 alter table employees enable row level security;
 alter table shifts enable row level security;
 
+create table if not exists public.events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  event_date date not null,
+  start_time time,
+  end_time time,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+alter table events enable row level security;
+
 create or replace function public.current_employee_slug()
 returns text
 language sql
@@ -36,6 +48,35 @@ as $$
     ),
     false
   )
+$$;
+
+create or replace function public.current_employee_is_manager()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    (
+      select role = 'Manager'
+      from public.employees
+      where auth_user_id = auth.uid()
+        and active = true
+      limit 1
+    ),
+    false
+  )
+$$;
+
+create or replace function public.current_employee_can_edit()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select public.current_employee_is_admin() or public.current_employee_is_manager()
 $$;
 
 create or replace function public.replace_schedule(new_shifts jsonb)
@@ -70,16 +111,25 @@ $$;
 
 grant execute on function public.current_employee_slug() to authenticated;
 grant execute on function public.current_employee_is_admin() to authenticated;
+grant execute on function public.current_employee_is_manager() to authenticated;
+grant execute on function public.current_employee_can_edit() to authenticated;
 grant execute on function public.replace_schedule(jsonb) to authenticated;
 
 drop policy if exists "Users can read active employees" on employees;
 drop policy if exists "Admins can manage employees" on employees;
+drop policy if exists "Managers can update non-admin employees" on employees;
 drop policy if exists "Authenticated users can read shifts" on shifts;
 drop policy if exists "Admins can insert shifts" on shifts;
 drop policy if exists "Admins can delete shifts" on shifts;
 drop policy if exists "Admins can update shifts" on shifts;
+drop policy if exists "Managers can insert shifts" on shifts;
+drop policy if exists "Managers can update shifts" on shifts;
 drop policy if exists "Employees can take open shifts" on shifts;
 drop policy if exists "Employees can release own shifts" on shifts;
+drop policy if exists "Authenticated users can read events" on events;
+drop policy if exists "Managers and admins can insert events" on events;
+drop policy if exists "Managers and admins can update events" on events;
+drop policy if exists "Admins can delete events" on events;
 
 create policy "Users can read active employees"
 on employees
@@ -94,6 +144,19 @@ to authenticated
 using (public.current_employee_is_admin())
 with check (public.current_employee_is_admin());
 
+create policy "Managers can update non-admin employees"
+on employees
+for update
+to authenticated
+using (
+  public.current_employee_is_manager()
+  and is_admin = false
+)
+with check (
+  public.current_employee_is_manager()
+  and is_admin = false
+);
+
 create policy "Authenticated users can read shifts"
 on shifts
 for select
@@ -104,7 +167,7 @@ create policy "Admins can insert shifts"
 on shifts
 for insert
 to authenticated
-with check (public.current_employee_is_admin());
+with check (public.current_employee_can_edit());
 
 create policy "Admins can delete shifts"
 on shifts
@@ -116,28 +179,30 @@ create policy "Admins can update shifts"
 on shifts
 for update
 to authenticated
-using (public.current_employee_is_admin())
-with check (public.current_employee_is_admin());
+using (public.current_employee_can_edit())
+with check (public.current_employee_can_edit());
 
-create policy "Employees can take open shifts"
-on shifts
+create policy "Authenticated users can read events"
+on events
+for select
+to authenticated
+using (true);
+
+create policy "Managers and admins can insert events"
+on events
+for insert
+to authenticated
+with check (public.current_employee_can_edit());
+
+create policy "Managers and admins can update events"
+on events
 for update
 to authenticated
-using (open = true)
-with check (
-  open = false
-  and employee_name = public.current_employee_slug()
-);
+using (public.current_employee_can_edit())
+with check (public.current_employee_can_edit());
 
-create policy "Employees can release own shifts"
-on shifts
-for update
+create policy "Admins can delete events"
+on events
+for delete
 to authenticated
-using (
-  open = false
-  and employee_name = public.current_employee_slug()
-)
-with check (
-  open = true
-  and employee_name is null
-);
+using (public.current_employee_is_admin());

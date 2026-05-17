@@ -6,8 +6,9 @@ const shiftTimes = [
   { label: 'Frueh-Abend', start_time: '17:00', end_time: '19:30', people: 4 },
   { label: 'Spaet-Abend', start_time: '19:30', end_time: '22:00', people: 4 },
 ]
-const roleOptions = ['Mitarbeiter', 'Manager', 'Gesch\u00e4ftsf\u00fchrer', 'Geschaeftsinhaber']
+const roleOptions = ['Mitarbeiter', 'Manager', 'Service', 'K\u00fcche', 'Bar', 'Kasse', 'Lieferung', 'Aushilfe', 'Gesch\u00e4ftsf\u00fchrer', 'Geschaeftsinhaber']
 const blacklist = [['11-gokay-sahin', '15-melik-hak']]
+const todayIso = new Date().toISOString().slice(0, 10)
 
 const inputClass =
   'w-full rounded-2xl border border-white/10 bg-black/30 px-5 py-4 outline-none transition focus:border-yellow-400'
@@ -15,6 +16,8 @@ const compactInputClass =
   'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-yellow-400'
 const roleBadgeClasses = {
   Gesch\u00e4ftsf\u00fchrer: 'bg-yellow-400/20 text-yellow-100 ring-yellow-300/30',
+  Manager: 'bg-purple-400/20 text-purple-100 ring-purple-300/30',
+  Mitarbeiter: 'bg-white/10 text-gray-100 ring-white/10',
   Service: 'bg-sky-400/20 text-sky-100 ring-sky-300/30',
   K\u00fcche: 'bg-emerald-400/20 text-emerald-100 ring-emerald-300/30',
   Bar: 'bg-fuchsia-400/20 text-fuchsia-100 ring-fuchsia-300/30',
@@ -29,10 +32,20 @@ const emptyEmployeeForm = {
   slug: '',
   role: 'Service',
   is_admin: false,
-  temp_password: '',
+  temp_password: 'MitarbeiterNRWCHINA',
+}
+const emptyEventForm = {
+  id: null,
+  title: '',
+  event_date: todayIso,
+  start_time: '18:00',
+  end_time: '',
+  note: '',
 }
 const loginAliases = {
   chinaadmin: 'admin@chinatown.de',
+  mitarbeiter: 'mitarbeiter@chinatown.de',
+  manager: 'manager@chinatown.de',
 }
 
 function formatTime(start, end) {
@@ -63,7 +76,11 @@ function employeeEmailFromName(name) {
 }
 
 function generateTempPassword() {
-  return String(Math.floor(10000 + Math.random() * 90000))
+  return 'MitarbeiterNRWCHINA'
+}
+
+function defaultPasswordForRole(role) {
+  return role === 'Manager' ? 'ManagerTownNRW' : 'MitarbeiterNRWCHINA'
 }
 
 function roleBadgeClass(role) {
@@ -114,6 +131,39 @@ function sortRows(a, b) {
   )
 }
 
+function sortEvents(a, b) {
+  return (
+    (a.event_date ?? '').localeCompare(b.event_date ?? '') ||
+    (a.start_time ?? '').localeCompare(b.start_time ?? '') ||
+    (a.title ?? '').localeCompare(b.title ?? '')
+  )
+}
+
+function formatDate(value) {
+  if (!value) {
+    return 'Ohne Datum'
+  }
+
+  return new Intl.DateTimeFormat('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(`${value}T00:00:00`))
+}
+
+function formatEventTime(event) {
+  if (!event.start_time && !event.end_time) {
+    return 'Ganztag'
+  }
+
+  if (!event.end_time) {
+    return `${event.start_time?.slice(0, 5)} Uhr`
+  }
+
+  return `${event.start_time?.slice(0, 5)} - ${event.end_time?.slice(0, 5)} Uhr`
+}
+
 export default function ChinaTownDienstplan() {
   const [sessionUser, setSessionUser] = useState(null)
   const [email, setEmail] = useState('')
@@ -121,6 +171,8 @@ export default function ChinaTownDienstplan() {
   const [newPassword, setNewPassword] = useState('')
   const [employees, setEmployees] = useState([])
   const [rows, setRows] = useState([])
+  const [events, setEvents] = useState([])
+  const [eventForm, setEventForm] = useState(emptyEventForm)
   const [employeeForm, setEmployeeForm] = useState(() => ({
     ...emptyEmployeeForm,
     temp_password: generateTempPassword(),
@@ -131,6 +183,10 @@ export default function ChinaTownDienstplan() {
 
   const activeEmployee = useMemo(() => employeeFromUser(sessionUser, employees), [sessionUser, employees])
   const isAdmin = Boolean(activeEmployee?.is_admin)
+  const isManager = activeEmployee?.role === 'Manager'
+  const canEdit = isAdmin || isManager
+  const canDelete = isAdmin
+  const accountRole = isAdmin ? 'Admin' : isManager ? 'Manager' : (activeEmployee?.role ?? 'Nicht zugeordnet')
   const employeesBySlug = useMemo(
     () => new Map(employees.map((employee) => [employee.slug, employee])),
     [employees],
@@ -179,6 +235,11 @@ export default function ChinaTownDienstplan() {
     }
   }, [rows])
 
+  const upcomingEvents = useMemo(
+    () => events.filter((event) => !event.event_date || event.event_date >= todayIso).sort(sortEvents),
+    [events],
+  )
+
   const myShifts = useMemo(() => {
     if (!activeEmployee) {
       return []
@@ -225,11 +286,28 @@ export default function ChinaTownDienstplan() {
     setEmployees(data ?? [])
   }, [])
 
+  const loadEvents = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, title, event_date, start_time, end_time, note')
+      .order('event_date')
+      .order('start_time')
+
+    if (error) {
+      setMessage(`Events konnten nicht geladen werden: ${error.message}`)
+      setEvents([])
+      return
+    }
+
+    setEvents((data ?? []).sort(sortEvents))
+  }, [])
+
   useEffect(() => {
     // The first load intentionally synchronizes React state with Supabase on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadShifts()
     loadEmployees()
+    loadEvents()
 
     supabase.auth.getUser().then(({ data }) => {
       setSessionUser(data.user ?? null)
@@ -253,12 +331,20 @@ export default function ChinaTownDienstplan() {
       })
       .subscribe()
 
+    const eventsChannel = supabase
+      .channel('public:events')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        loadEvents()
+      })
+      .subscribe()
+
     return () => {
       authListener.subscription.unsubscribe()
       supabase.removeChannel(channel)
       supabase.removeChannel(employeesChannel)
+      supabase.removeChannel(eventsChannel)
     }
-  }, [loadEmployees, loadShifts])
+  }, [loadEmployees, loadEvents, loadShifts])
 
   async function login() {
     setSaving(true)
@@ -280,7 +366,7 @@ export default function ChinaTownDienstplan() {
     setPassword('')
     setMessage(
       employee
-        ? `Angemeldet als ${employee.name}${employee.is_admin ? ' (Admin)' : ''}.`
+        ? `Angemeldet als ${employee.name}${employee.is_admin ? ' (Admin)' : employee.role === 'Manager' ? ' (Manager)' : ''}.`
         : 'Login erfolgreich. Dieses Konto ist noch keinem Mitarbeiter zugeordnet.',
     )
   }
@@ -343,10 +429,24 @@ export default function ChinaTownDienstplan() {
     return false
   }
 
+  function requireEditAccess() {
+    if (canEdit) {
+      return true
+    }
+
+    setMessage('Diese Aktion ist nur fuer Manager und Admins erlaubt.')
+    return false
+  }
+
   async function saveEmployee(event) {
     event.preventDefault()
 
-    if (!requireAdmin()) {
+    if (!requireEditAccess()) {
+      return
+    }
+
+    if (!employeeForm.id && !isAdmin) {
+      setMessage('Neue Mitarbeiterkonten koennen nur Admins anlegen.')
       return
     }
 
@@ -354,7 +454,7 @@ export default function ChinaTownDienstplan() {
       name: employeeForm.name.trim(),
       slug: normalizeSlug(employeeForm.slug),
       role: employeeForm.role,
-      is_admin: employeeForm.is_admin,
+      is_admin: isAdmin ? employeeForm.is_admin : false,
       active: true,
     }
     const payload = employeeForm.id ? basePayload : { ...basePayload, auth_user_id: null }
@@ -367,11 +467,14 @@ export default function ChinaTownDienstplan() {
     setSaving(true)
     setMessage('')
 
-    const query = employeeForm.id
-      ? supabase.from('employees').update(payload).eq('id', employeeForm.id)
-      : supabase.from('employees').insert(payload)
-
-    const { error } = await query
+    const { error } = employeeForm.id
+      ? await supabase.from('employees').update(payload).eq('id', employeeForm.id)
+      : await supabase.functions.invoke('create-employee', {
+          body: {
+            ...payload,
+            password: employeeForm.temp_password,
+          },
+        })
 
     if (error) {
       setMessage(`Mitarbeiter konnte nicht gespeichert werden: ${error.message}`)
@@ -379,7 +482,7 @@ export default function ChinaTownDienstplan() {
       await loadEmployees()
       const loginInfo = employeeForm.id
         ? ''
-        : ` Login vorbereiten: ${employeeEmailFromName(payload.name)} / Erstpasswort ${employeeForm.temp_password}.`
+        : ` Login: ${employeeEmailFromName(payload.name)} / Erstpasswort ${employeeForm.temp_password}.`
       resetEmployeeForm()
       setMessage(`Mitarbeiter wurde gespeichert.${loginInfo}`)
     }
@@ -515,10 +618,7 @@ export default function ChinaTownDienstplan() {
   }
 
   async function releaseShift(shift) {
-    const canRelease = isAdmin || shift.employee_name === activeEmployee?.slug
-
-    if (!canRelease) {
-      setMessage('Du kannst nur eigene Schichten freigeben.')
+    if (!requireEditAccess()) {
       return
     }
 
@@ -538,8 +638,7 @@ export default function ChinaTownDienstplan() {
   }
 
   async function takeShift(shift) {
-    if (!activeEmployee) {
-      setMessage('Bitte mit einem Mitarbeiterkonto anmelden.')
+    if (!requireEditAccess()) {
       return
     }
 
@@ -563,6 +662,88 @@ export default function ChinaTownDienstplan() {
     } else {
       await loadShifts()
       setMessage('Schicht wurde uebernommen.')
+    }
+
+    setSaving(false)
+  }
+
+  function resetEventForm() {
+    setEventForm(emptyEventForm)
+  }
+
+  function editEvent(event) {
+    setEventForm({
+      id: event.id,
+      title: event.title ?? '',
+      event_date: event.event_date ?? todayIso,
+      start_time: event.start_time?.slice(0, 5) ?? '',
+      end_time: event.end_time?.slice(0, 5) ?? '',
+      note: event.note ?? '',
+    })
+  }
+
+  async function saveEvent(event) {
+    event.preventDefault()
+
+    if (!requireEditAccess()) {
+      return
+    }
+
+    const payload = {
+      title: eventForm.title.trim(),
+      event_date: eventForm.event_date,
+      start_time: eventForm.start_time || null,
+      end_time: eventForm.end_time || null,
+      note: eventForm.note.trim() || null,
+    }
+
+    if (!payload.title || !payload.event_date) {
+      setMessage('Event-Name und Datum sind Pflichtfelder.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error } = eventForm.id
+      ? await supabase.from('events').update(payload).eq('id', eventForm.id)
+      : await supabase.from('events').insert(payload)
+
+    if (error) {
+      setMessage(`Event konnte nicht gespeichert werden: ${error.message}`)
+    } else {
+      await loadEvents()
+      resetEventForm()
+      setMessage('Event wurde gespeichert.')
+    }
+
+    setSaving(false)
+  }
+
+  async function deleteEvent(event) {
+    if (!requireAdmin()) {
+      return
+    }
+
+    const confirmed = window.confirm(`${event.title} wirklich loeschen?`)
+
+    if (!confirmed) {
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error } = await supabase.from('events').delete().eq('id', event.id)
+
+    if (error) {
+      setMessage(`Event konnte nicht geloescht werden: ${error.message}`)
+    } else {
+      await loadEvents()
+      if (eventForm.id === event.id) {
+        resetEventForm()
+      }
+      setMessage('Event wurde geloescht.')
     }
 
     setSaving(false)
@@ -612,7 +793,7 @@ export default function ChinaTownDienstplan() {
           </div>
         )}
 
-        <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Geplant</p>
             <p className="mt-2 text-3xl font-bold text-yellow-300">{scheduleStats.planned}</p>
@@ -638,6 +819,11 @@ export default function ChinaTownDienstplan() {
             <p className="mt-2 text-3xl font-bold text-blue-200">{myShifts.length}</p>
             <p className="mt-1 text-xs text-gray-400">{activeEmployee ? 'eigene Schichten' : 'nach Login sichtbar'}</p>
           </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Events</p>
+            <p className="mt-2 text-3xl font-bold text-purple-200">{upcomingEvents.length}</p>
+            <p className="mt-1 text-xs text-gray-400">kommende Eintraege</p>
+          </div>
         </section>
 
         <section className="mb-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -660,7 +846,7 @@ export default function ChinaTownDienstplan() {
                   </div>
                   <div className="rounded-2xl bg-black/30 p-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Rolle</p>
-                    <p className="mt-2 font-semibold">{isAdmin ? 'Admin' : (activeEmployee?.role ?? 'Nicht zugeordnet')}</p>
+                    <p className="mt-2 font-semibold">{accountRole}</p>
                   </div>
                   <div className="rounded-2xl bg-black/30 p-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Konto</p>
@@ -720,9 +906,110 @@ export default function ChinaTownDienstplan() {
               </div>
               <div className="rounded-2xl bg-black/30 p-4">
                 <p className="font-semibold text-yellow-300">Adminschutz</p>
-                <p className="mt-1 text-sm text-gray-300">Plan bearbeiten, freigeben und generieren ist Admins vorbehalten.</p>
+                <p className="mt-1 text-sm text-gray-300">Manager bearbeiten Eintraege, Admins duerfen zusaetzlich loeschen.</p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mb-5 rounded-3xl border border-purple-400/20 bg-white/5 p-5">
+          <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-purple-100">Events</h2>
+              <p className="text-sm text-gray-400">Besondere Tage, Reservierungen oder Hinweise fuer die Dienstplanung.</p>
+            </div>
+            {eventForm.id && canEdit && (
+              <button
+                onClick={resetEventForm}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-200 transition hover:bg-white/10"
+              >
+                Neu
+              </button>
+            )}
+          </div>
+
+          {canEdit && (
+            <form onSubmit={saveEvent} className="no-print mb-5 grid gap-3 lg:grid-cols-[1fr_150px_120px_120px_auto]">
+              <input
+                className={compactInputClass}
+                placeholder="Event"
+                value={eventForm.title}
+                onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))}
+              />
+              <input
+                className={compactInputClass}
+                type="date"
+                value={eventForm.event_date}
+                onChange={(event) => setEventForm((form) => ({ ...form, event_date: event.target.value }))}
+              />
+              <input
+                className={compactInputClass}
+                type="time"
+                value={eventForm.start_time}
+                onChange={(event) => setEventForm((form) => ({ ...form, start_time: event.target.value }))}
+              />
+              <input
+                className={compactInputClass}
+                type="time"
+                value={eventForm.end_time}
+                onChange={(event) => setEventForm((form) => ({ ...form, end_time: event.target.value }))}
+              />
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-xl bg-purple-300 px-4 py-2 text-sm font-bold text-black transition hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Speichern
+              </button>
+              <textarea
+                className={`${compactInputClass} lg:col-span-5`}
+                placeholder="Notiz"
+                value={eventForm.note}
+                onChange={(event) => setEventForm((form) => ({ ...form, note: event.target.value }))}
+              />
+            </form>
+          )}
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {upcomingEvents.length === 0 ? (
+              <p className="rounded-2xl bg-black/30 p-4 text-sm text-gray-400">Aktuell sind keine Events eingetragen.</p>
+            ) : (
+              upcomingEvents.map((event) => (
+                <article key={event.id} className="rounded-2xl border border-purple-400/15 bg-black/30 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-purple-200">
+                        {formatDate(event.event_date)}
+                      </p>
+                      <h3 className="mt-1 font-bold text-white">{event.title}</h3>
+                      <p className="mt-1 text-sm text-gray-300">{formatEventTime(event)}</p>
+                    </div>
+                    {canEdit && (
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editEvent(event)}
+                          className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/35"
+                        >
+                          Bearbeiten
+                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => deleteEvent(event)}
+                            disabled={saving}
+                            className="rounded-lg bg-red-600/30 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-600/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Loeschen
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {event.note && <p className="mt-3 text-sm text-gray-400">{event.note}</p>}
+                </article>
+              ))
+            )}
           </div>
         </section>
 
@@ -824,7 +1111,7 @@ export default function ChinaTownDienstplan() {
                                       {employeeRole}
                                     </span>
                                   </div>
-                                  {(isAdmin || employee.employee_name === activeEmployee?.slug) && (
+                                  {canEdit && (
                                     <button
                                       onClick={() => releaseShift(employee)}
                                       disabled={saving}
@@ -847,12 +1134,14 @@ export default function ChinaTownDienstplan() {
           )}
         </section>
 
-        {isAdmin && (
+        {canEdit && (
           <section className="no-print mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-yellow-400">Mitarbeiterverwaltung</h2>
-                <p className="text-sm text-gray-400">Mitarbeiter, Rollen, Adminrechte und vorbereitete China-Town-Logins.</p>
+                <p className="text-sm text-gray-400">
+                  Manager duerfen bearbeiten, Admins duerfen zusaetzlich loeschen und Adminrechte setzen.
+                </p>
               </div>
               {employeeForm.id && (
                 <button
@@ -886,7 +1175,13 @@ export default function ChinaTownDienstplan() {
               <select
                 className={compactInputClass}
                 value={employeeForm.role}
-                onChange={(event) => setEmployeeForm((form) => ({ ...form, role: event.target.value }))}
+                onChange={(event) =>
+                  setEmployeeForm((form) => ({
+                    ...form,
+                    role: event.target.value,
+                    temp_password: defaultPasswordForRole(event.target.value),
+                  }))
+                }
               >
                 {roleOptions.map((role) => (
                   <option key={role} value={role} className="bg-[#130909]">
@@ -899,13 +1194,14 @@ export default function ChinaTownDienstplan() {
                   <input
                     type="checkbox"
                     checked={employeeForm.is_admin}
+                    disabled={!isAdmin}
                     onChange={(event) => setEmployeeForm((form) => ({ ...form, is_admin: event.target.checked }))}
                   />
                   Admin
                 </label>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || (!employeeForm.id && !isAdmin)}
                   className="rounded-xl bg-yellow-400 px-4 py-2 text-sm font-bold text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Speichern
@@ -933,7 +1229,7 @@ export default function ChinaTownDienstplan() {
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-gray-400">
-                  Auth-User in Supabase mit dieser E-Mail und diesem Passwort anlegen, danach User-ID mit Mitarbeiter verbinden.
+                  Standards: mitarbeiter@chinatown.de / MitarbeiterNRWCHINA und manager@chinatown.de / ManagerTownNRW.
                 </p>
               </div>
             </div>
@@ -980,22 +1276,26 @@ export default function ChinaTownDienstplan() {
                           >
                             Bearbeiten
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => deactivateEmployee(employee)}
-                            disabled={saving}
-                            className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/35 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Deaktivieren
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteEmployee(employee)}
-                            disabled={saving}
-                            className="rounded-lg bg-red-600/30 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-600/50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Loeschen
-                          </button>
+                          {canDelete && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => deactivateEmployee(employee)}
+                                disabled={saving}
+                                className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/35 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Deaktivieren
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteEmployee(employee)}
+                                disabled={saving}
+                                className="rounded-lg bg-red-600/30 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-600/50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Loeschen
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1010,7 +1310,7 @@ export default function ChinaTownDienstplan() {
           <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-2xl font-bold text-yellow-400">Offene Schichten</h2>
-              <p className="text-sm text-gray-400">Mitarbeiter uebernehmen automatisch mit ihrem eigenen Konto.</p>
+              <p className="text-sm text-gray-400">Offene Dienste koennen von Manager und Admin bearbeitet werden.</p>
             </div>
             <span className="rounded-full bg-yellow-400/15 px-3 py-1 text-sm font-semibold text-yellow-100">
               {openShifts.length} offen
@@ -1031,11 +1331,11 @@ export default function ChinaTownDienstplan() {
                     <p className="mt-1 font-semibold">
                       {shift.day} - {shift.shift}
                     </p>
-                    <p className="text-sm text-gray-400">{activeEmployee ? `Uebernahme als ${activeEmployee.name}` : 'Login erforderlich'}</p>
+                    <p className="text-sm text-gray-400">{canEdit ? `Bearbeitung als ${activeEmployee.name}` : 'Nur Ansicht'}</p>
                   </div>
                   <button
                     onClick={() => takeShift(shift)}
-                    disabled={saving || !activeEmployee}
+                    disabled={saving || !canEdit}
                     className="rounded-2xl bg-yellow-400 px-4 py-3 font-bold text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Uebernehmen
